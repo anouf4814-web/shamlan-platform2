@@ -1,0 +1,1064 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0" />
+  <title>SHAMLAN CLOUD | Alhadad — منصة شملان السحابية</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Arabic:wght@300;400;500;600;700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+  <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+  <style>
+    :root {
+      --bg-main: #F1FBFD;
+      --bg-card: #FFFFFF;
+      --bg-sidebar: #E4F7FA;
+      --btn-primary: #168DAA;
+      --btn-hover: #11738B;
+      --accent-sky: #36BFD2;
+      --accent-glow: #8BDFF0;
+      --accent-ice: #DDF6FC;
+      --text-main: #164B70;
+      --text-muted: #4A7A96;
+      --border-color: #D2EDF2;
+    }
+    html.dark {
+      --bg-main: #102A36;
+      --bg-card: #193D4A;
+      --bg-sidebar: #153440;
+      --btn-primary: #36BFD2;
+      --btn-hover: #65D6DE;
+      --accent-sky: #65D6DE;
+      --accent-glow: #2B5260;
+      --accent-ice: #1E4959;
+      --text-main: #F3FCFF;
+      --text-muted: #A7D4E3;
+      --border-color: #2B5260;
+    }
+    body {
+      font-family: 'IBM Plex Sans Arabic', 'Inter', sans-serif;
+      background-color: var(--bg-main);
+      color: var(--text-main);
+      transition: background-color 0.25s ease, color 0.25s ease;
+    }
+    .font-en { font-family: 'Inter', sans-serif; }
+    .card-surface {
+      background-color: var(--bg-card);
+      border: 1px solid var(--border-color);
+      box-shadow: 0 4px 20px -4px rgba(22, 141, 170, 0.08);
+    }
+    .sidebar-surface {
+      background-color: var(--bg-sidebar);
+      border-inline-end: 1px solid var(--border-color);
+    }
+    .btn-brand {
+      background-color: var(--btn-primary);
+      color: #FFFFFF;
+      transition: all 0.2s ease;
+    }
+    html.dark .btn-brand { color: #0B222C; font-weight: 700; }
+    .btn-brand:hover { background-color: var(--btn-hover); transform: translateY(-1px); }
+    .input-brand {
+      background-color: var(--bg-main);
+      border: 1px solid var(--border-color);
+      color: var(--text-main);
+    }
+    .input-brand:focus {
+      outline: none;
+      border-color: var(--accent-sky);
+      box-shadow: 0 0 0 3px rgba(54, 191, 210, 0.2);
+    }
+    ::-webkit-scrollbar { width: 6px; height: 6px; }
+    ::-webkit-scrollbar-thumb { background: #36BFD2; border-radius: 99px; }
+  </style>
+</head>
+<body>
+  <div id="root"></div>
+
+  <script type="text/babel">
+    const { useState, useEffect, useMemo } = React;
+
+    // رابط المحرك السحابي الرئيسي المدمج (Shamlan_Master_API)
+    const MASTER_PROVISIONER_URL = "https://script.google.com/macros/s/AKfycbzue_uUnGpOBs0UkSwGDs5otmRMPZR4iqVbVleY6EaRXYz8RsZ0sODpKEi0_crpslod/exec";
+
+    // ==========================================
+    // 1. محرك التخزين المحلي المعزول (IndexedDB)
+    // ==========================================
+    const DB_NAME = 'ShamlanCloudSaaS_DB_v2';
+    const DB_VERSION = 1;
+
+    function openLocalDB() {
+      return new Promise((resolve, reject) => {
+        const req = indexedDB.open(DB_NAME, DB_VERSION);
+        req.onupgradeneeded = (e) => {
+          const db = e.target.result;
+          if (!db.objectStoreNames.contains('users')) db.createObjectStore('users', { keyPath: 'id' });
+          if (!db.objectStoreNames.contains('projects')) db.createObjectStore('projects', { keyPath: 'id' });
+          if (!db.objectStoreNames.contains('records')) db.createObjectStore('records', { keyPath: 'id' });
+          if (!db.objectStoreNames.contains('backups')) db.createObjectStore('backups', { keyPath: 'id' });
+          if (!db.objectStoreNames.contains('logs')) db.createObjectStore('logs', { keyPath: 'id' });
+        };
+        req.onsuccess = () => resolve(req.result);
+        req.onerror = () => reject(req.error);
+      });
+    }
+
+    async function dbGetAll(storeName) {
+      const db = await openLocalDB();
+      return new Promise((resolve, reject) => {
+        const tx = db.transaction(storeName, 'readonly');
+        const req = tx.objectStore(storeName).getAll();
+        req.onsuccess = () => resolve(req.result || []);
+        req.onerror = () => reject(req.error);
+      });
+    }
+
+    async function dbPut(storeName, item) {
+      const db = await openLocalDB();
+      return new Promise((resolve, reject) => {
+        const tx = db.transaction(storeName, 'readwrite');
+        const req = tx.objectStore(storeName).put(item);
+        req.onsuccess = () => resolve(item);
+        req.onerror = () => reject(req.error);
+      });
+    }
+
+    async function dbDelete(storeName, id) {
+      const db = await openLocalDB();
+      return new Promise((resolve, reject) => {
+        const tx = db.transaction(storeName, 'readwrite');
+        const req = tx.objectStore(storeName).delete(id);
+        req.onsuccess = () => resolve(true);
+        req.onerror = () => reject(req.error);
+      });
+    }
+
+    async function hashPassword(password) {
+      const msgBuffer = new TextEncoder().encode(password + '_SHAMLAN_SALT_2026');
+      const hashBuffer = await crypto.subtle.digest('SHA-256', msgBuffer);
+      return Array.from(new Uint8Array(hashBuffer)).map(b => b.toString(16).padStart(2, '0')).join('');
+    }
+
+    // ==========================================
+    // 2. سكربت Supabase SQL الكامل
+    // ==========================================
+    const SUPABASE_SQL_SCHEMA = `-- SHAMLAN CLOUD | Alhadad — Production PostgreSQL Schema & RLS Policies
+CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
+
+CREATE TABLE IF NOT EXISTS public.profiles (
+  id UUID PRIMARY KEY REFERENCES auth.users(id) ON DELETE CASCADE,
+  full_name TEXT NOT NULL,
+  title TEXT DEFAULT 'مهندس / مطور',
+  storage_quota_bytes BIGINT DEFAULT 1073741824,
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS public.projects (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  owner_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+  project_code TEXT UNIQUE NOT NULL,
+  name TEXT NOT NULL,
+  description TEXT,
+  project_type TEXT DEFAULT 'web_static',
+  connection_status TEXT DEFAULT 'not_connected',
+  provider TEXT DEFAULT 'none',
+  total_size_bytes BIGINT DEFAULT 0,
+  current_version TEXT DEFAULT '1.0.0',
+  shamlan_manifest JSONB DEFAULT '{}'::jsonb,
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS public.project_records (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  project_id UUID NOT NULL REFERENCES public.projects(id) ON DELETE CASCADE,
+  owner_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+  table_name TEXT NOT NULL DEFAULT 'main_records',
+  record_data JSONB NOT NULL,
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+ALTER TABLE public.profiles ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.projects ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.project_records ENABLE ROW LEVEL SECURITY;
+
+DO $$ BEGIN
+  CREATE POLICY "owner_profiles" ON public.profiles FOR ALL USING (auth.uid() = id);
+  CREATE POLICY "owner_projects" ON public.projects FOR ALL USING (auth.uid() = owner_id);
+  CREATE POLICY "owner_records" ON public.project_records FOR ALL USING (auth.uid() = owner_id);
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $$;`;
+
+    // ==========================================
+    // 3. محلل المشاريع الذكي (Real DOM & Code Analyzer)
+    // ==========================================
+    function analyzeProjectFiles(projectName, files) {
+      const htmlFiles = files.filter(f => f.path.toLowerCase().endsWith('.html'));
+      const cssFiles = files.filter(f => f.path.toLowerCase().endsWith('.css'));
+      const jsFiles = files.filter(f => /\.(js|ts|jsx|tsx)$/i.test(f.path));
+      const jsonFiles = files.filter(f => f.path.toLowerCase().endsWith('.json'));
+
+      const folders = [...new Set(files.map(f => f.path.includes('/') ? f.path.split('/')[0] : '/ (الجذر)'))];
+      const forms = [];
+      const buttons = [];
+      const storageMethods = new Set();
+      const detectedTech = new Set();
+      const issues = [];
+
+      if (htmlFiles.length > 0) detectedTech.add('HTML5');
+      if (cssFiles.length > 0) detectedTech.add('CSS3');
+      if (jsFiles.length > 0) detectedTech.add('JavaScript');
+
+      const pkgFile = jsonFiles.find(f => f.path.endsWith('package.json'));
+      let projectType = 'تطبيق ويب ثابت (HTML/CSS/JS)';
+      if (pkgFile) {
+        try {
+          const pkg = JSON.parse(pkgFile.content || '{}');
+          const deps = { ...(pkg.dependencies || {}), ...(pkg.devDependencies || {}) };
+          if (deps.react) { detectedTech.add('React'); projectType = 'تطبيق React حديث'; }
+          if (deps.tailwindcss) detectedTech.add('Tailwind CSS');
+        } catch (e) {}
+      }
+
+      const parser = new DOMParser();
+      htmlFiles.forEach(hf => {
+        const doc = parser.parseFromString(hf.content || '', 'text/html');
+        doc.querySelectorAll('link[href], script[src]').forEach(el => {
+          const ref = el.getAttribute('href') || el.getAttribute('src') || '';
+          if (ref.includes('tailwind')) detectedTech.add('Tailwind CSS');
+          if (ref.includes('supabase')) detectedTech.add('Supabase');
+        });
+
+        doc.querySelectorAll('form').forEach((form, idx) => {
+          const fields = [];
+          form.querySelectorAll('input, select, textarea').forEach(inp => {
+            const name = inp.getAttribute('name') || inp.getAttribute('id') || inp.getAttribute('placeholder') || `field_${fields.length + 1}`;
+            const type = inp.getAttribute('type') || inp.tagName.toLowerCase();
+            if (type !== 'submit' && type !== 'button') {
+              fields.push({ name: name.replace(/[^a-zA-Z0-9_؀-ۿ]/g, '_'), type });
+            }
+          });
+          forms.push({ page: hf.path, formId: form.getAttribute('id') || `form_${idx + 1}`, fields });
+        });
+
+        doc.querySelectorAll('button, input[type="submit"]').forEach(btn => {
+          const label = (btn.textContent || btn.value || 'زر تفاعلي').trim().slice(0, 40);
+          if (label) buttons.push({ page: hf.path, label });
+        });
+      });
+
+      const allCode = [...htmlFiles, ...jsFiles].map(f => f.content || '').join('
+');
+      if (/localStorage|sessionStorage/.test(allCode)) {
+        storageMethods.add('تخزين محلي مؤقت (LocalStorage)');
+        issues.push('المشروع يعتمد على LocalStorage؛ سيتم ترقيته للتخزين السحابي الدائم.');
+      }
+      if (/script\.google\.com/.test(allCode)) detectedTech.add('Google Apps Script');
+      if (storageMethods.size === 0) storageMethods.add('واجهة ثابتة جاهزة للربط السحابي');
+
+      const suggestedTables = [];
+      const storageFolders = ['project_assets', 'backups'];
+
+      if (forms.length > 0) {
+        forms.forEach(f => {
+          suggestedTables.push({
+            name: `tbl_${f.formId.toLowerCase()}`,
+            sourcePage: f.page,
+            columns: [
+              { name: 'id', type: 'UUID (Primary Key)', required: true },
+              ...f.fields.map(fld => ({ name: fld.name, type: fld.type === 'number' ? 'NUMERIC' : 'TEXT', required: true })),
+              { name: 'created_at', type: 'TIMESTAMPTZ', required: true }
+            ]
+          });
+        });
+      } else {
+        suggestedTables.push({
+          name: 'tbl_project_items',
+          sourcePage: 'عام',
+          columns: [
+            { name: 'id', type: 'UUID (Primary Key)', required: true },
+            { name: 'title', type: 'TEXT', required: true },
+            { name: 'description', type: 'TEXT', required: false },
+            { name: 'attachment_url', type: 'TEXT', required: false },
+            { name: 'created_at', type: 'TIMESTAMPTZ', required: true }
+          ]
+        });
+      }
+
+      return {
+        projectName,
+        projectType,
+        languages: [...detectedTech],
+        totalFiles: files.length,
+        pagesCount: htmlFiles.length,
+        folders,
+        forms,
+        buttonsCount: buttons.length,
+        storageMethods: [...storageMethods],
+        issues,
+        needs: [
+          { title: 'إنشاء قاعدة بيانات Google Sheets تلقائيًا', reason: 'لحفظ جميع سجلات وبيانات المشروع سحابيًا.' },
+          { title: 'إنشاء مجلد Google Drive للمرفقات', reason: 'لرفع الشهادات والصور والملفات بروابط مباشرة.' }
+        ],
+        suggestedTables,
+        storageFolders,
+        summary: {
+          description: `مشروع "${projectName}" من نوع (${projectType}) يتكون من ${files.length} ملفًا و${htmlFiles.length} صفحة ويب.`,
+          currentBehavior: `يعمل حاليًا عبر (${[...storageMethods].join(' + ')}) ويحتوي على ${forms.length} نموذج إدخال و${buttons.length} عنصر تفاعلي.`,
+          recommendations: [
+            'اعتماد الربط السحابي التلقائي لإنشاء قاعدة البيانات ومجلد التخزين فورًا.',
+            'تنزيل الحزمة النهائية المحقونة بملف .shamlan.json للنشر المباشر.'
+          ]
+        }
+      };
+    }
+
+    function generateClientBridgeJS(project, manifest) {
+      return `/**
+ * SHAMLAN CLOUD | Alhadad — Cloud Connection Bridge v${project.currentVersion}
+ * معرف المشروع: ${project.project_code}
+ */
+window.ShamlanCloud = {
+  projectId: "${project.project_code}",
+  provider: "${manifest.provider}",
+  endpoint: "${manifest.endpointUrl || ''}",
+  sheetId: "${manifest.sheetId || ''}",
+  folderId: "${manifest.folderId || ''}",
+  tables: ${JSON.stringify(manifest.tables)}
+};`;
+    }
+
+    // ==========================================
+    // 4. الشعار الأصلي للمنصة (SVG Logo)
+    // ==========================================
+    function ShamlanLogo({ size = 42, showText = true }) {
+      return (
+        <div className="flex items-center gap-3 select-none">
+          <svg width={size} height={size} viewBox="0 0 64 64" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <defs>
+              <linearGradient id="skyGrad" x1="6" y1="8" x2="58" y2="56" gradientUnits="userSpaceOnUse">
+                <stop offset="0%" stopColor="#8BDFF0" />
+                <stop offset="50%" stopColor="#36BFD2" />
+                <stop offset="100%" stopColor="#168DAA" />
+              </linearGradient>
+            </defs>
+            <rect x="2" y="2" width="60" height="60" rx="16" fill="url(#skyGrad)" fillOpacity="0.14" stroke="#36BFD2" strokeWidth="2" />
+            <path d="M20 42H45C50.5228 42 55 37.5228 55 32C55 26.8271 51.0725 22.5707 46.0365 22.0528C44.3646 15.6967 38.5801 11 31.7 11C23.5814 11 17 17.5814 17 25.7C17 26.1536 17.0206 26.6024 17.0608 27.0454C13.063 28.2738 10.15 31.9967 10.15 36.4C10.15 41.8124 14.5376 42 20 42Z" stroke="url(#skyGrad)" strokeWidth="3.2" strokeLinecap="round" strokeLinejoin="round" />
+            <path d="M22 33H28L32 28L36 33H43" stroke="#168DAA" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" />
+            <circle cx="32" cy="28" r="3.5" fill="#36BFD2" stroke="#FFFFFF" strokeWidth="1.5" />
+            <path d="M32 32V49M25 49H39" stroke="#36BFD2" strokeWidth="2.2" strokeLinecap="round" />
+          </svg>
+          {showText && (
+            <div className="leading-tight">
+              <div className="font-en font-bold text-base tracking-wide" style={{ color: 'var(--text-main)' }}>
+                SHAMLAN <span style={{ color: '#36BFD2' }}>CLOUD</span>
+              </div>
+              <div className="font-en text-[11px] font-semibold tracking-widest uppercase" style={{ color: '#168DAA' }}>
+                Alhadad
+              </div>
+            </div>
+          )}
+        </div>
+      );
+    }
+
+    // ==========================================
+    // 5. التطبيق الرئيسي لمنصة SHAMLAN CLOUD
+    // ==========================================
+    function App() {
+      const [darkMode, setDarkMode] = useState(() => localStorage.getItem('shamlan_theme') === 'dark');
+      const [currentUser, setCurrentUser] = useState(() => {
+        try { return JSON.parse(sessionStorage.getItem('shamlan_session') || 'null'); } catch { return null; }
+      });
+      const [authView, setAuthView] = useState('landing');
+      const [activePage, setActivePage] = useState('dashboard');
+      const [mobileNavOpen, setMobileNavOpen] = useState(false);
+
+      const [projects, setProjects] = useState([]);
+      const [selectedProjectId, setSelectedProjectId] = useState(null);
+      const [records, setRecords] = useState([]);
+      const [backups, setBackups] = useState([]);
+      const [logs, setLogs] = useState([]);
+      const [toast, setToast] = useState(null);
+
+      // رابط المحرك السحابي الرئيسي (مضمّن افتراضيًا وقابل للتعديل)
+      const [masterApiUrl, setMasterApiUrl] = useState(() => localStorage.getItem('shamlan_master_api') || MASTER_PROVISIONER_URL);
+      const [sbConfig, setSbConfig] = useState(() => {
+        try { return JSON.parse(localStorage.getItem('shamlan_sb_cfg') || '{"url":"","anonKey":""}'); } catch { return { url: '', anonKey: '' }; }
+      });
+
+      const showToast = (msg, type = 'info') => {
+        setToast({ msg, type });
+        setTimeout(() => setToast(null), 5000);
+      };
+
+      useEffect(() => {
+        document.documentElement.classList.toggle('dark', darkMode);
+        localStorage.setItem('shamlan_theme', darkMode ? 'dark' : 'light');
+      }, [darkMode]);
+
+      const loadUserData = async (userId) => {
+        if (!userId) return;
+        const allProj = await dbGetAll('projects');
+        const userProj = allProj.filter(p => p.ownerId === userId).sort((a, b) => new Date(b.updatedAt) - new Date(a.updatedAt));
+        setProjects(userProj);
+        if (userProj.length > 0 && !selectedProjectId) setSelectedProjectId(userProj[0].id);
+
+        const allRec = await dbGetAll('records');
+        setRecords(allRec.filter(r => r.ownerId === userId));
+
+        const allBkp = await dbGetAll('backups');
+        setBackups(allBkp.filter(b => b.ownerId === userId));
+
+        const allLogs = await dbGetAll('logs');
+        setLogs(allLogs.filter(l => l.ownerId === userId).sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt)));
+      };
+
+      useEffect(() => {
+        if (currentUser?.id) loadUserData(currentUser.id);
+      }, [currentUser]);
+
+      const addActivityLog = async (action, details, projectId = null, status = 'success') => {
+        if (!currentUser) return;
+        const entry = {
+          id: crypto.randomUUID(),
+          ownerId: currentUser.id,
+          projectId,
+          action,
+          details,
+          status,
+          createdAt: new Date().toISOString()
+        };
+        await dbPut('logs', entry);
+        setLogs(prev => [entry, ...prev]);
+      };
+
+      const selectedProject = useMemo(() => projects.find(p => p.id === selectedProjectId) || projects[0] || null, [projects, selectedProjectId]);
+
+      const handleLogout = async () => {
+        await addActivityLog('تسجيل خروج', 'تم إنهاء الجلسة بأمان');
+        sessionStorage.removeItem('shamlan_session');
+        setCurrentUser(null);
+        setAuthView('landing');
+      };
+
+      if (!currentUser) {
+        return (
+          <AuthPortal
+            authView={authView}
+            setAuthView={setAuthView}
+            darkMode={darkMode}
+            setDarkMode={setDarkMode}
+            onLoginSuccess={(user) => {
+              sessionStorage.setItem('shamlan_session', JSON.stringify(user));
+              setCurrentUser(user);
+              showToast(`أهلاً بك، ${user.fullName}`, 'success');
+            }}
+            showToast={showToast}
+            toast={toast}
+          />
+        );
+      }
+
+      const navItems = [
+        { id: 'dashboard', label: 'لوحة التحكم', icon: '📊' },
+        { id: 'projects', label: 'مشاريعي', icon: '📁' },
+        { id: 'upload', label: 'رفع مشروع جديد', icon: '☁️' },
+        { id: 'analysis', label: 'التحليل والتقرير', icon: '🔍' },
+        { id: 'plan', label: 'خطة الربط والتنفيذ التلقائي', icon: '⚡' },
+        { id: 'data', label: 'إدارة بيانات المشروع', icon: '🗄️' },
+        { id: 'files', label: 'ملفات المشروع', icon: '📄' },
+        { id: 'integrations', label: 'التكاملات و Google', icon: '🔗' },
+        { id: 'update', label: 'تحديث المشروع والإصدارات', icon: '🔄' },
+        { id: 'backups', label: 'النسخ الاحتياطي', icon: '🛡️' },
+        { id: 'export', label: 'التصدير والنشر', icon: '📦' },
+        { id: 'logs', label: 'سجل العمليات', icon: '📜' },
+        { id: 'settings', label: 'الإعدادات والمحرك السحابي', icon: '⚙️' },
+      ];
+
+      return (
+        <div className="min-h-screen flex flex-col lg:flex-row">
+          {toast && (
+            <div className={`fixed bottom-5 left-5 right-5 sm:right-auto z-50 px-5 py-3.5 rounded-2xl shadow-xl text-sm font-medium border flex items-center gap-2 ${
+              toast.type === 'error' ? 'bg-red-600 text-white border-red-400' :
+              toast.type === 'success' ? 'bg-teal-600 text-white border-teal-400' :
+              'bg-sky-700 text-white border-sky-400'
+            }`}>
+              <span>{toast.type === 'error' ? '⚠️' : toast.type === 'success' ? '✅' : 'ℹ️'}</span>
+              <span>{toast.msg}</span>
+            </div>
+          )}
+
+          <header className="lg:hidden flex items-center justify-between px-4 py-3 card-surface sticky top-0 z-30">
+            <ShamlanLogo size={36} />
+            <div className="flex items-center gap-2">
+              <button onClick={() => setDarkMode(!darkMode)} className="p-2 rounded-xl border" style={{ borderColor: 'var(--border-color)' }}>
+                {darkMode ? '☀️' : '🌙'}
+              </button>
+              <button onClick={() => setMobileNavOpen(!mobileNavOpen)} className="px-3 py-2 rounded-xl btn-brand text-sm font-bold">
+                {mobileNavOpen ? 'إغلاق' : 'القائمة ☰'}
+              </button>
+            </div>
+          </header>
+
+          <aside className={`${mobileNavOpen ? 'fixed inset-0 z-40 block' : 'hidden'} lg:block lg:w-72 lg:shrink-0 sidebar-surface p-4 overflow-y-auto`}>
+            <div className="hidden lg:flex items-center justify-between mb-6 pb-4 border-b" style={{ borderColor: 'var(--border-color)' }}>
+              <ShamlanLogo size={40} />
+              <button onClick={() => setDarkMode(!darkMode)} className="p-2 rounded-xl card-surface text-sm">
+                {darkMode ? '☀️' : '🌙'}
+              </button>
+            </div>
+
+            <div className="p-3 rounded-2xl card-surface mb-4">
+              <div className="text-xs opacity-75">الحساب النشط (تستلم عليه الإيميلات)</div>
+              <div className="font-bold text-sm truncate mt-0.5">{currentUser.fullName}</div>
+              <div className="font-en text-xs opacity-70 truncate">{currentUser.email}</div>
+              {projects.length > 0 && (
+                <div className="mt-3 pt-2 border-t" style={{ borderColor: 'var(--border-color)' }}>
+                  <label className="text-[11px] block mb-1 opacity-75">المشروع المحدد:</label>
+                  <select
+                    value={selectedProject?.id || ''}
+                    onChange={(e) => setSelectedProjectId(e.target.value)}
+                    className="w-full text-xs p-2 rounded-xl input-brand font-semibold"
+                  >
+                    {projects.map(p => (
+                      <option key={p.id} value={p.id}>{p.name} (v{p.currentVersion})</option>
+                    ))}
+                  </select>
+                </div>
+              )}
+            </div>
+
+            <nav className="space-y-1">
+              {navItems.map(item => (
+                <button
+                  key={item.id}
+                  onClick={() => { setActivePage(item.id); setMobileNavOpen(false); }}
+                  className={`w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-sm font-medium transition-all ${
+                    activePage === item.id ? 'btn-brand shadow-md' : 'hover:bg-sky-500/10'
+                  }`}
+                >
+                  <span>{item.icon}</span>
+                  <span>{item.label}</span>
+                </button>
+              ))}
+            </nav>
+
+            <div className="mt-6 pt-4 border-t" style={{ borderColor: 'var(--border-color)' }}>
+              <button onClick={handleLogout} className="w-full py-2.5 px-4 rounded-xl text-sm font-bold text-red-600 bg-red-500/10 hover:bg-red-500/20 transition">
+                🚪 تسجيل الخروج
+              </button>
+            </div>
+          </aside>
+
+          <main className="flex-1 p-4 md:p-8 max-w-7xl mx-auto w-full">
+            {activePage === 'dashboard' && (
+              <DashboardView
+                currentUser={currentUser}
+                projects={projects}
+                records={records}
+                backups={backups}
+                logs={logs}
+                masterApiUrl={masterApiUrl}
+                onNavigate={setActivePage}
+                onSelectProject={(id) => { setSelectedProjectId(id); setActivePage('plan'); }}
+              />
+            )}
+
+            {activePage === 'projects' && (
+              <ProjectsListView
+                projects={projects}
+                onSelectProject={(id, targetPage = 'plan') => { setSelectedProjectId(id); setActivePage(targetPage); }}
+                onDeleteProject={async (proj) => {
+                  await dbDelete('projects', proj.id);
+                  await addActivityLog('حذف مشروع', `تم حذف المشروع ${proj.name}`, proj.id, 'warning');
+                  await loadUserData(currentUser.id);
+                  showToast('تم حذف المشروع بنجاح', 'success');
+                }}
+                onNavigate={setActivePage}
+              />
+            )}
+
+            {activePage === 'upload' && (
+              <UploadProjectView
+                currentUser={currentUser}
+                onProjectCreated={async (newProj) => {
+                  await dbPut('projects', newProj);
+                  await addActivityLog('رفع وتحليل مشروع جديد', `تم رفع "${newProj.name}" (${newProj.files.length} ملف)`, newProj.id);
+                  await loadUserData(currentUser.id);
+                  setSelectedProjectId(newProj.id);
+                  setActivePage('plan');
+                  showToast('تم تحليل المشروع! اضغط "اعتماد وتنفيذ الربط التلقائي" لإنشاء الشيت والدرايف وإرسال الإيميل.', 'success');
+                }}
+                showToast={showToast}
+              />
+            )}
+
+            {activePage === 'analysis' && (
+              <AnalysisReportView project={selectedProject} onNavigate={setActivePage} />
+            )}
+
+            {activePage === 'plan' && (
+              <AutoProvisioningPlanView
+                project={selectedProject}
+                currentUser={currentUser}
+                masterApiUrl={masterApiUrl}
+                onProjectUpdated={async (updatedProj, logMsg) => {
+                  await dbPut('projects', updatedProj);
+                  await addActivityLog('ربط سحابي تلقائي وإرسال إيميل', logMsg, updatedProj.id);
+                  await loadUserData(currentUser.id);
+                }}
+                onNavigate={setActivePage}
+                showToast={showToast}
+              />
+            )}
+
+            {activePage === 'data' && (
+              <ProjectDataManagerView
+                project={selectedProject}
+                currentUser={currentUser}
+                records={records.filter(r => r.projectId === selectedProject?.id)}
+                onRefresh={() => loadUserData(currentUser.id)}
+                onLog={addActivityLog}
+                showToast={showToast}
+              />
+            )}
+
+            {activePage === 'files' && <ProjectFilesView project={selectedProject} />}
+
+            {activePage === 'integrations' && (
+              <IntegrationsView project={selectedProject} masterApiUrl={masterApiUrl} onNavigate={setActivePage} />
+            )}
+
+            {activePage === 'update' && (
+              <ProjectUpdaterView
+                project={selectedProject}
+                currentUser={currentUser}
+                onProjectUpdated={async (updatedProj, bkp, logDetails) => {
+                  await dbPut('backups', bkp);
+                  await dbPut('projects', updatedProj);
+                  await addActivityLog('تحديث إصدار المشروع', logDetails, updatedProj.id);
+                  await loadUserData(currentUser.id);
+                  showToast(`تم تحديث المشروع إلى الإصدار ${updatedProj.currentVersion}`, 'success');
+                }}
+              />
+            )}
+
+            {activePage === 'backups' && (
+              <BackupsView
+                project={selectedProject}
+                currentUser={currentUser}
+                backups={backups.filter(b => b.projectId === selectedProject?.id)}
+                records={records.filter(r => r.projectId === selectedProject?.id)}
+                onRefresh={() => loadUserData(currentUser.id)}
+                onLog={addActivityLog}
+                showToast={showToast}
+              />
+            )}
+
+            {activePage === 'export' && (
+              <ExportDeployView project={selectedProject} onLog={addActivityLog} showToast={showToast} />
+            )}
+
+            {activePage === 'logs' && <ActivityLogsView logs={logs} />}
+
+            {activePage === 'settings' && (
+              <SettingsDatabaseView
+                currentUser={currentUser}
+                setCurrentUser={setCurrentUser}
+                masterApiUrl={masterApiUrl}
+                setMasterApiUrl={setMasterApiUrl}
+                sbConfig={sbConfig}
+                setSbConfig={setSbConfig}
+                showToast={showToast}
+              />
+            )}
+          </main>
+        </div>
+      );
+    }
+
+    // ==========================================
+    // 6. بوابة الدخول والتسجيل
+    // ==========================================
+    function AuthPortal({ authView, setAuthView, darkMode, setDarkMode, onLoginSuccess, showToast, toast }) {
+      const [email, setEmail] = useState('');
+      const [password, setPassword] = useState('');
+      const [fullName, setFullName] = useState('');
+      const [loading, setLoading] = useState(false);
+
+      const handleRegister = async (e) => {
+        e.preventDefault();
+        if (!fullName.trim() || !email.trim() || password.length < 4) {
+          return showToast('يرجى إدخال الاسم والبريد الإلكتروني الصحيح وكلمة المرور', 'error');
+        }
+        setLoading(true);
+        const users = await dbGetAll('users');
+        if (users.some(u => u.email.toLowerCase() === email.toLowerCase())) {
+          setLoading(false);
+          return showToast('هذا البريد الإلكتروني مسجل مسبقًا', 'error');
+        }
+        const passHash = await hashPassword(password);
+        const newUser = {
+          id: crypto.randomUUID(),
+          fullName: fullName.trim(),
+          email: email.trim().toLowerCase(),
+          passHash,
+          createdAt: new Date().toISOString()
+        };
+        await dbPut('users', newUser);
+        setLoading(false);
+        onLoginSuccess({ id: newUser.id, fullName: newUser.fullName, email: newUser.email });
+      };
+
+      const handleLogin = async (e) => {
+        e.preventDefault();
+        setLoading(true);
+        const users = await dbGetAll('users');
+        const passHash = await hashPassword(password);
+        const found = users.find(u => u.email.toLowerCase() === email.trim().toLowerCase() && u.passHash === passHash);
+        setLoading(false);
+        if (!found) {
+          return showToast('بيانات الدخول غير صحيحة أو الحساب غير موجود', 'error');
+        }
+        onLoginSuccess({ id: found.id, fullName: found.fullName, email: found.email });
+      };
+
+      return (
+        <div className="min-h-screen flex flex-col">
+          {toast && (
+            <div className={`fixed bottom-5 left-5 z-50 px-5 py-3 rounded-2xl shadow-xl text-sm font-medium ${toast.type === 'error' ? 'bg-red-600 text-white' : 'bg-teal-600 text-white'}`}>
+              {toast.msg}
+            </div>
+          )}
+          <header className="px-6 py-4 flex items-center justify-between max-w-7xl mx-auto w-full">
+            <div className="cursor-pointer" onClick={() => setAuthView('landing')}>
+              <ShamlanLogo size={44} />
+            </div>
+            <div className="flex items-center gap-3">
+              <button onClick={() => setDarkMode(!darkMode)} className="p-2.5 rounded-xl card-surface text-sm">
+                {darkMode ? '☀️' : '🌙'}
+              </button>
+              <button onClick={() => setAuthView('login')} className="px-4 py-2 rounded-xl card-surface text-sm font-bold">
+                دخول
+              </button>
+              <button onClick={() => setAuthView('register')} className="px-4 py-2 rounded-xl btn-brand text-sm font-bold">
+                ابدأ الآن
+              </button>
+            </div>
+          </header>
+
+          {authView === 'landing' ? (
+            <div className="flex-1 flex flex-col items-center justify-center px-6 py-12 text-center max-w-4xl mx-auto">
+              <span className="px-4 py-1.5 rounded-full text-xs font-bold mb-5" style={{ backgroundColor: 'var(--accent-ice)', color: '#168DAA' }}>
+                ارفع مشروعك فقط — والمنصة تنشئ الشيت والدرايف وترسل الموافقة لإيميلك تلقائيًا
+              </span>
+              <h1 className="text-3xl md:text-5xl font-bold leading-tight mb-4">
+                منصة <span style={{ color: '#36BFD2' }}>SHAMLAN CLOUD</span> للربط السحابي الذكي
+              </h1>
+              <p className="text-base md:text-lg opacity-80 max-w-2xl mb-8 leading-relaxed">
+                بضغطة زر واحدة، تفحص المنصة مشروعك، تنشئ قاعدة بيانات Google Sheets ومجلد Google Drive، تحقن كود الربط، وترسل رسالة التأكيد بالروابط مباشرة إلى بريدك الإلكتروني.
+              </p>
+              <div className="flex flex-wrap justify-center gap-4">
+                <button onClick={() => setAuthView('register')} className="px-8 py-3.5 rounded-2xl btn-brand font-bold text-base shadow-lg">
+                  🚀 إنشاء حساب وبدء الربط التلقائي
+                </button>
+                <button onClick={() => setAuthView('login')} className="px-8 py-3.5 rounded-2xl card-surface font-bold text-base">
+                  🔐 تسجيل الدخول
+                </button>
+              </div>
+            </div>
+          ) : (
+            <div className="flex-1 flex items-center justify-center px-4 py-8">
+              <div className="w-full max-w-md p-7 rounded-3xl card-surface">
+                <h2 className="text-2xl font-bold mb-1">
+                  {authView === 'login' ? 'تسجيل الدخول' : 'إنشاء حساب سحابي'}
+                </h2>
+                <p className="text-xs opacity-75 mb-6">ملاحظة: البريد الإلكتروني الذي تسجل به هو الذي ستصلك عليه رسائل الموافقة والروابط تلقائيًا.</p>
+
+                <form onSubmit={authView === 'login' ? handleLogin : handleRegister} className="space-y-4">
+                  {authView === 'register' && (
+                    <div>
+                      <label className="block text-xs font-bold mb-1">الاسم الكامل</label>
+                      <input type="text" required value={fullName} onChange={e => setFullName(e.target.value)} placeholder="م/ شملان الحداد" className="w-full p-3 rounded-xl input-brand text-sm" />
+                    </div>
+                  )}
+                  <div>
+                    <label className="block text-xs font-bold mb-1">البريد الإلكتروني (لاستلام إشعارات الموافقة)</label>
+                    <input type="email" required value={email} onChange={e => setEmail(e.target.value)} placeholder="anouf4814@gmail.com" className="w-full p-3 rounded-xl input-brand text-sm font-en" dir="ltr" />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-bold mb-1">كلمة المرور</label>
+                    <input type="password" required value={password} onChange={e => setPassword(e.target.value)} placeholder="••••••••" className="w-full p-3 rounded-xl input-brand text-sm font-en" dir="ltr" />
+                  </div>
+                  <button type="submit" disabled={loading} className="w-full py-3 rounded-xl btn-brand font-bold text-sm">
+                    {loading ? 'جاري الدخول...' : authView === 'login' ? 'دخول' : 'إنشاء الحساب والدخول'}
+                  </button>
+                </form>
+
+                <div className="mt-5 pt-4 border-t text-center text-xs" style={{ borderColor: 'var(--border-color)' }}>
+                  <button onClick={() => setAuthView(authView === 'login' ? 'register' : 'login')} className="font-bold" style={{ color: '#36BFD2' }}>
+                    {authView === 'login' ? 'ليس لديك حساب؟ أنشئ حسابًا جديدًا' : 'لديك حساب بالفعل؟ سجل الدخول'}
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+      );
+    }
+
+    // ==========================================
+    // 7. لوحة التحكم (Dashboard)
+    // ==========================================
+    function DashboardView({ currentUser, projects, records, backups, logs, masterApiUrl, onNavigate, onSelectProject }) {
+      const connectedCount = projects.filter(p => p.connectionStatus === 'connected').length;
+
+      return (
+        <div className="space-y-6">
+          <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+            <div>
+              <h1 className="text-2xl font-bold">مرحبًا، {currentUser.fullName} 👋</h1>
+              <p className="text-sm opacity-75">المحرك السحابي التلقائي متصل وجاهز لإنشاء Google Sheets و Drive وإرسال الإيميلات.</p>
+            </div>
+            <button onClick={() => onNavigate('upload')} className="px-5 py-3 rounded-2xl btn-brand font-bold text-sm shadow">
+              + رفع مشروع إلكتروني جديد
+            </button>
+          </div>
+
+          <div className="p-4 rounded-2xl card-surface flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            <div className="flex items-center gap-3">
+              <span className="text-2xl">⚡</span>
+              <div>
+                <div className="font-bold text-sm flex items-center gap-2">
+                  <span>حالة المحرك السحابي التلقائي (Shamlan Master API):</span>
+                  <span className="px-2.5 py-0.5 rounded-full text-xs bg-emerald-500/15 text-emerald-600 font-bold">متصل ونشط</span>
+                </div>
+                <div className="text-xs opacity-70 font-en truncate max-w-md" dir="ltr">{masterApiUrl}</div>
+              </div>
+            </div>
+            <button onClick={() => onNavigate('settings')} className="px-3.5 py-2 rounded-xl border text-xs font-bold shrink-0" style={{ borderColor: 'var(--border-color)' }}>
+              إعدادات المحرك
+            </button>
+          </div>
+
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+            <div className="p-5 rounded-2xl card-surface">
+              <div className="text-xs opacity-75">إجمالي المشاريع</div>
+              <div className="text-2xl font-bold font-en mt-1">{projects.length}</div>
+              <div className="text-[11px] mt-1" style={{ color: '#36BFD2' }}>{connectedCount} مربوط تلقائيًا</div>
+            </div>
+            <div className="p-5 rounded-2xl card-surface">
+              <div className="text-xs opacity-75">السجلات المخزنة</div>
+              <div className="text-2xl font-bold font-en mt-1">{records.length}</div>
+            </div>
+            <div className="p-5 rounded-2xl card-surface">
+              <div className="text-xs opacity-75">النسخ الاحتياطية</div>
+              <div className="text-2xl font-bold font-en mt-1">{backups.length}</div>
+            </div>
+            <div className="p-5 rounded-2xl card-surface">
+              <div className="text-xs opacity-75">بريد الإشعارات</div>
+              <div className="text-xs font-bold font-en mt-2 truncate">{currentUser.email}</div>
+            </div>
+          </div>
+
+          <div className="p-5 rounded-2xl card-surface">
+            <h2 className="font-bold text-base mb-4">📁 مشاريعي (اضغط على المشروع للموافقة وتنفيذ الربط)</h2>
+            {projects.length === 0 ? (
+              <div className="text-center py-8 opacity-75 text-sm">
+                لا توجد مشاريع مرفوعة بعد. اضغط على زر <strong>"+ رفع مشروع إلكتروني جديد"</strong> في الأعلى.
+              </div>
+            ) : (
+              <div className="space-y-3">
+                {projects.map(p => (
+                  <div key={p.id} onClick={() => onSelectProject(p.id)} className="p-4 rounded-xl border cursor-pointer hover:border-sky-400 transition flex flex-col sm:flex-row sm:items-center justify-between gap-3" style={{ borderColor: 'var(--border-color)' }}>
+                    <div>
+                      <div className="font-bold text-sm">{p.name}</div>
+                      <div className="text-xs opacity-70 font-en">{p.project_code} • v{p.currentVersion} • {p.files.length} ملف</div>
+                      {p.cloudLinks?.sheetUrl && (
+                        <div className="flex gap-3 mt-1.5 text-xs font-bold" style={{ color: '#168DAA' }}>
+                          <a href={p.cloudLinks.sheetUrl} target="_blank" rel="noreferrer" onClick={e => e.stopPropagation()} className="underline">📊 فتح Google Sheets</a>
+                          <a href={p.cloudLinks.folderUrl} target="_blank" rel="noreferrer" onClick={e => e.stopPropagation()} className="underline">📁 فتح Google Drive</a>
+                        </div>
+                      )}
+                    </div>
+                    <span className={`px-3 py-1 rounded-full text-xs font-bold self-start sm:self-center ${p.connectionStatus === 'connected' ? 'bg-emerald-500/15 text-emerald-600' : 'bg-amber-500/15 text-amber-600'}`}>
+                      {p.connectionStatus === 'connected' ? '✅ تم الربط وإرسال الإيميل' : '⚡ اضغط للموافقة والربط'}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+      );
+    }
+
+    // ==========================================
+    // 8. صفحة رفع مشروع جديد
+    // ==========================================
+    function UploadProjectView({ currentUser, onProjectCreated, showToast }) {
+      const [projectName, setProjectName] = useState('');
+      const [description, setDescription] = useState('');
+      const [extractedFiles, setExtractedFiles] = useState([]);
+      const [uploading, setUploading] = useState(false);
+
+      const handleFilesInput = async (e) => {
+        const selected = Array.from(e.target.files || []);
+        if (selected.length === 0) return;
+
+        setUploading(true);
+        const collected = [];
+        let detectedName = projectName;
+
+        for (const file of selected) {
+          if (file.name.toLowerCase().endsWith('.zip')) {
+            if (!detectedName) detectedName = file.name.replace(/\.zip$/i, '');
+            const zip = await JSZip.loadAsync(file);
+            for (const path of Object.keys(zip.files)) {
+              const entry = zip.files[path];
+              if (entry.dir || path.includes('__MACOSX') || path.includes('node_modules/')) continue;
+              const isText = /\.(html|htm|css|js|ts|jsx|tsx|json|md|txt|svg)$/i.test(path);
+              const content = isText ? await entry.async('string') : await entry.async('base64');
+              collected.push({ path, size: content.length, isText, content, originalContent: content });
+            }
+          } else {
+            if (!detectedName) detectedName = file.name.replace(/\.[^.]+$/, '');
+            const isText = /\.(html|htm|css|js|ts|jsx|tsx|json|md|txt|svg)$/i.test(file.name);
+            const content = await new Promise((res) => {
+              const reader = new FileReader();
+              reader.onload = () => res(reader.result);
+              if (isText) reader.readAsText(file);
+              else reader.readAsDataURL(file);
+            });
+            collected.push({ path: file.name, size: file.size, isText, content, originalContent: content });
+          }
+        }
+
+        if (!projectName && detectedName) setProjectName(detectedName);
+        setExtractedFiles(collected);
+        setUploading(false);
+      };
+
+      const handleCreateProject = async () => {
+        if (extractedFiles.length === 0) return showToast('يرجى رفع ملفات المشروع أولاً', 'error');
+        const finalName = projectName.trim() || 'مشروع إلكتروني جديد';
+        const analysis = analyzeProjectFiles(finalName, extractedFiles);
+        const projectCode = 'SHM-' + Math.random().toString(36).substring(2, 7).toUpperCase();
+
+        const newProject = {
+          id: crypto.randomUUID(),
+          ownerId: currentUser.id,
+          project_code: projectCode,
+          name: finalName,
+          description: description.trim() || analysis.summary.description,
+          projectType: analysis.projectType,
+          connectionStatus: 'needs_connection',
+          provider: 'none',
+          totalSize: extractedFiles.reduce((a, f) => a + (f.size || 0), 0),
+          currentVersion: '1.0.0',
+          files: extractedFiles,
+          analysis,
+          plan: {
+            provider: 'Google Sheets + Drive + Apps Script (تلقائي)',
+            tables: analysis.suggestedTables,
+            storageFolders: analysis.storageFolders,
+            approved: false
+          },
+          versions: [{ version: '1.0.0', date: new Date().toISOString(), notes: 'الرفع الأولي' }],
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString()
+        };
+
+        await onProjectCreated(newProject);
+      };
+
+      return (
+        <div className="max-w-3xl mx-auto space-y-6">
+          <div>
+            <h1 className="text-2xl font-bold">☁️ رفع مشروع إلكتروني جديد</h1>
+            <p className="text-sm opacity-75">ارفع ملف ZIP أو ملفات المشروع وسيتولى المحرك السحابي إنشاء الشيت والدرايف وإرسال الموافقة لإيميلك.</p>
+          </div>
+
+          <div className="p-6 rounded-3xl card-surface space-y-5">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div>
+                <label className="block text-xs font-bold mb-1">اسم المشروع</label>
+                <input type="text" value={projectName} onChange={e => setProjectName(e.target.value)} placeholder="يُستخرج تلقائيًا أو اكتبه هنا" className="w-full p-3 rounded-xl input-brand text-sm" />
+              </div>
+              <div>
+                <label className="block text-xs font-bold mb-1">وصف مختصر</label>
+                <input type="text" value={description} onChange={e => setDescription(e.target.value)} placeholder="مثال: بوابة مبادرة مدرسية" className="w-full p-3 rounded-xl input-brand text-sm" />
+              </div>
+            </div>
+
+            <label className="block border-2 border-dashed rounded-2xl p-8 text-center cursor-pointer hover:border-sky-400 transition" style={{ borderColor: 'var(--border-color)', backgroundColor: 'var(--bg-main)' }}>
+              <div className="text-4xl mb-2">📦</div>
+              <div className="font-bold text-base">اضغط لاختيار ملف ZIP أو ملفات HTML/CSS/JS من جهازك</div>
+              <input type="file" multiple accept=".zip,.html,.htm,.css,.js,.json,.png,.jpg,.jpeg,.svg,.pdf" onChange={handleFilesInput} className="hidden" />
+            </label>
+
+            {uploading && <div className="text-center text-sm font-bold animate-pulse">⏳ جاري فحص واستخراج الملفات...</div>}
+
+            {extractedFiles.length > 0 && (
+              <div className="space-y-4">
+                <div className="text-sm font-bold">✅ تم استلام {extractedFiles.length} ملف بنجاح.</div>
+                <button onClick={handleCreateProject} className="w-full py-4 rounded-2xl btn-brand font-bold text-sm shadow-lg">
+                  ⚡ المتابعة لاعتماد الربط التلقائي وإنشاء الشيت والدرايف
+                </button>
+              </div>
+            )}
+          </div>
+        </div>
+      );
+    }
+
+    // ==========================================
+    // 9. صفحة خطة الربط والتنفيذ التلقائي الكامل
+    // ==========================================
+    function AutoProvisioningPlanView({ project, currentUser, masterApiUrl, onProjectUpdated, onNavigate, showToast }) {
+      const [executing, setExecuting] = useState(false);
+      const [stepsLog, setStepsLog] = useState([]);
+      const [notificationEmail, setNotificationEmail] = useState(currentUser?.email || '');
+
+      if (!project) return <EmptyProjectPrompt onNavigate={onNavigate} />;
+
+      const handleApproveAndAutoProvision = async () => {
+        if (!masterApiUrl) {
+          return showToast('يرجى التأكد من وجود رابط المحرك السحابي في الإعدادات', 'error');
+        }
+        setExecuting(true);
+        setStepsLog([
+          { text: '1. إرسال طلب التجهيز إلى المحرك السحابي Shamlan_Master_API...', ok: true },
+          { text: '2. جاري إنشاء مجلد Google Drive وقاعدة بيانات Google Sheets...', ok: true }
+        ]);
+
+        try {
+          const payload = {
+            projectName: project.name,
+            projectCode: project.project_code,
+            tables: project.plan.tables,
+            email: notificationEmail.trim()
+          };
+
+          let cloudResult = null;
+          try {
+            const response = await fetch(masterApiUrl, {
+              method: 'POST',
+              headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+              body: JSON.stringify(payload)
+            });
+            cloudResult = await response.json();
+          } catch (fetchErr) {
+            await fetch(masterApiUrl, {
+              method: 'POST',
+              mode: 'no-cors',
+              headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+              body: JSON.stringify(payload)
+            });
+        
